@@ -278,6 +278,7 @@ def cross_validate(
             return_times=True,
             return_estimator=return_estimator,
             error_score=error_score,
+            groups=groups
         )
         for train, test in cv.split(X, y, groups)
     )
@@ -546,6 +547,7 @@ def _fit_and_score(
     split_progress=None,
     candidate_progress=None,
     error_score=np.nan,
+    groups=None
 ):
 
     """Fit estimator and compute scores for a given dataset split.
@@ -705,10 +707,10 @@ def _fit_and_score(
         result["fit_error"] = None
 
         fit_time = time.time() - start_time
-        test_scores = _score(estimator, X_test, y_test, scorer, error_score)
+        test_scores = _score(estimator, X_test, y_test, scorer, error_score, groups=groups)
         score_time = time.time() - start_time - fit_time
         if return_train_score:
-            train_scores = _score(estimator, X_train, y_train, scorer, error_score)
+            train_scores = _score(estimator, X_train, y_train, scorer, error_score, groups=groups)
 
     if verbose > 1:
         total_time = score_time + fit_time
@@ -750,7 +752,7 @@ def _fit_and_score(
     return result
 
 
-def _score(estimator, X_test, y_test, scorer, error_score="raise"):
+def _score(estimator, X_test, y_test, scorer, error_score="raise", groups=None):
     """Compute the score(s) of an estimator on a given test set.
 
     Will return a dict of floats if `scorer` is a dict, otherwise a single
@@ -758,13 +760,22 @@ def _score(estimator, X_test, y_test, scorer, error_score="raise"):
     """
     if isinstance(scorer, dict):
         # will cache method calls if needed. scorer() returns a dict
+        if not groups is None:
+            raise ValueError('groups argument for dictionary scorers is not yet implemented. Please update this function to handle group based dictionary scorers')
+
         scorer = _MultimetricScorer(scorers=scorer, raise_exc=(error_score == "raise"))
 
     try:
-        if y_test is None:
-            scores = scorer(estimator, X_test)
+        if groups is None:
+            if y_test is None:
+                scores = scorer(estimator, X_test)
+            else:
+                scores = scorer(estimator, X_test, y_test)
         else:
-            scores = scorer(estimator, X_test, y_test)
+            if y_test is None:
+                scores = scorer(estimator, X_test, groups=groups)
+            else:
+                scores = scorer(estimator, X_test, y_test, groups=groups)
     except Exception:
         if isinstance(scorer, _MultimetricScorer):
             # If `_MultimetricScorer` raises exception, the `error_score`
@@ -1584,6 +1595,7 @@ def learning_curve(
                 return_times,
                 error_score=error_score,
                 fit_params=fit_params,
+                groups=groups
             )
             for train, test in cv_iter
         )
@@ -1608,6 +1620,7 @@ def learning_curve(
                 return_train_score=True,
                 error_score=error_score,
                 return_times=return_times,
+                groups=groups
             )
             for train, test in train_test_proportions
         )
@@ -1710,6 +1723,7 @@ def _incremental_fit_estimator(
     return_times,
     error_score,
     fit_params,
+    groups=None
 ):
     """Train estimator on training subsets incrementally and compute scores."""
     train_scores, test_scores, fit_times, score_times = [], [], [], []
@@ -1736,8 +1750,12 @@ def _incremental_fit_estimator(
 
         start_score = time.time()
 
-        test_scores.append(_score(estimator, X_test, y_test, scorer, error_score))
-        train_scores.append(_score(estimator, X_train, y_train, scorer, error_score))
+        if groups is None:
+            test_scores.append(_score(estimator, X_test, y_test, scorer, error_score))
+            train_scores.append(_score(estimator, X_train, y_train, scorer, error_score))
+        else:
+            test_scores.append(_score(estimator, X_test, y_test, scorer, error_score, groups=groups))
+            train_scores.append(_score(estimator, X_train, y_train, scorer, error_score, groups=groups))
 
         score_time = time.time() - start_score
         score_times.append(score_time)
@@ -1886,6 +1904,7 @@ def validation_curve(
             fit_params=fit_params,
             return_train_score=True,
             error_score=error_score,
+            groups=groups
         )
         # NOTE do not change order of iteration to allow one time cv splitters
         for train, test in cv.split(X, y, groups)

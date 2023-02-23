@@ -819,6 +819,7 @@ class BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
             return_parameters=False,
             error_score=self.error_score,
             verbose=self.verbose,
+            groups=groups,
         )
         results = {}
         with parallel:
