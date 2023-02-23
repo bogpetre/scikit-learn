@@ -1,0 +1,7 @@
+to install to this scikit-learn just use pip
+
+pip install git+https://github.com/bogpetre/scikit-learn
+
+If you already have the systemwide package try 
+conda remove --force scikit-learn
+To get rid of it without removing packages that depend on it, then install this scikit-learn version in this folder
