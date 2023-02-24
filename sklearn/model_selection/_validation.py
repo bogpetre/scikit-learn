@@ -18,6 +18,7 @@ from functools import partial
 from traceback import format_exc
 from contextlib import suppress
 from collections import Counter
+from inspect import getfullargspec
 
 import numpy as np
 import scipy.sparse as sp
@@ -677,8 +678,8 @@ def _fit_and_score(
 
     start_time = time.time()
 
-    X_train, y_train = _safe_split(estimator, X, y, train)
-    X_test, y_test = _safe_split(estimator, X, y, test, train)
+    X_train, y_train, grps_train = _safe_split(estimator, X, y, train, groups=groups)
+    X_test, y_test, grps_test = _safe_split(estimator, X, y, test, train, groups=groups)
 
     result = {}
     try:
@@ -707,10 +708,10 @@ def _fit_and_score(
         result["fit_error"] = None
 
         fit_time = time.time() - start_time
-        test_scores = _score(estimator, X_test, y_test, scorer, error_score, groups=groups)
+        test_scores = _score(estimator, X_test, y_test, scorer, error_score, groups=grps_test)
         score_time = time.time() - start_time - fit_time
         if return_train_score:
-            train_scores = _score(estimator, X_train, y_train, scorer, error_score, groups=groups)
+            train_scores = _score(estimator, X_train, y_train, scorer, error_score, groups=grps_train)
 
     if verbose > 1:
         total_time = score_time + fit_time
@@ -760,13 +761,14 @@ def _score(estimator, X_test, y_test, scorer, error_score="raise", groups=None):
     """
     if isinstance(scorer, dict):
         # will cache method calls if needed. scorer() returns a dict
-        if not groups is None:
-            raise ValueError('groups argument for dictionary scorers is not yet implemented. Please update this function to handle group based dictionary scorers')
-
+        argspec = getfullargspec(scorer['score'])
         scorer = _MultimetricScorer(scorers=scorer, raise_exc=(error_score == "raise"))
+    else:
+        argspec = getfullargspec(scorer)
+
 
     try:
-        if groups is None:
+       	if argspec.args is None or 'groups' not in argspec.args:
             if y_test is None:
                 scores = scorer(estimator, X_test)
             else:
@@ -1070,15 +1072,19 @@ def _fit_and_predict(estimator, X, y, train, test, verbose, fit_params, method):
     fit_params = fit_params if fit_params is not None else {}
     fit_params = _check_fit_params(X, fit_params, train)
 
-    X_train, y_train = _safe_split(estimator, X, y, train)
-    X_test, _ = _safe_split(estimator, X, y, test, train)
+    X_train, y_train, grps_train = _safe_split(estimator, X, y, train, groups=groups)
+    X_test, _, grps_test = _safe_split(estimator, X, y, test, train, groups=groups)
 
     if y_train is None:
         estimator.fit(X_train, **fit_params)
     else:
         estimator.fit(X_train, y_train, **fit_params)
     func = getattr(estimator, method)
-    predictions = func(X_test)
+    argspec = getfullargspec(func)
+    if argspec.args is not None and 'groups' in argspec.args:
+        predictions = func(X_test, groups=groups)
+    else:
+        predictions = func(X_test)
 
     encode = (
         method in ["decision_function", "predict_proba", "predict_log_proba"]
@@ -1356,11 +1362,15 @@ def _permutation_test_score(estimator, X, y, groups, cv, scorer, fit_params):
     fit_params = fit_params if fit_params is not None else {}
     avg_score = []
     for train, test in cv.split(X, y, groups):
-        X_train, y_train = _safe_split(estimator, X, y, train)
-        X_test, y_test = _safe_split(estimator, X, y, test, train)
+        X_train, y_train, grps_train = _safe_split(estimator, X, y, train, groups=groups)
+        X_test, y_test, grps_test = _safe_split(estimator, X, y, test, train, groups=groups)
         fit_params = _check_fit_params(X, fit_params, train)
         estimator.fit(X_train, y_train, **fit_params)
-        avg_score.append(scorer(estimator, X_test, y_test))
+        argspec = getfullargspec(scorer)
+        if argspec.args is not None and 'groups' in argspec.args:
+            avg_score.append(scorer(estimator, X_test, y_test, groups=grp_test))
+        else:
+            avg_score.append(scorer(estimator, X_test, y_test))
     return np.mean(avg_score)
 
 
@@ -1737,12 +1747,12 @@ def _incremental_fit_estimator(
 
     for n_train_samples, partial_train in partitions:
         train_subset = train[:n_train_samples]
-        X_train, y_train = _safe_split(estimator, X, y, train_subset)
+        X_train, y_train, grp_train = _safe_split(estimator, X, y, train_subset, groups=groups)
         X_partial_train, y_partial_train = _safe_split(estimator, X, y, partial_train)
-        X_test, y_test = _safe_split(estimator, X, y, test, train_subset)
+        X_test, y_test, grp_test = _safe_split(estimator, X, y, test, train_subset, groups=groups)
         start_fit = time.time()
         if y_partial_train is None:
-            partial_fit_func(X_partial_train)
+                partial_fit_func(X_partial_train)
         else:
             partial_fit_func(X_partial_train, y_partial_train)
         fit_time = time.time() - start_fit
@@ -1750,12 +1760,13 @@ def _incremental_fit_estimator(
 
         start_score = time.time()
 
-        if groups is None:
+        argspec = getfullargspec(_score)
+        if argspec.args is None or 'groups' not in argspec.args:
             test_scores.append(_score(estimator, X_test, y_test, scorer, error_score))
             train_scores.append(_score(estimator, X_train, y_train, scorer, error_score))
         else:
-            test_scores.append(_score(estimator, X_test, y_test, scorer, error_score, groups=groups))
-            train_scores.append(_score(estimator, X_train, y_train, scorer, error_score, groups=groups))
+            test_scores.append(_score(estimator, X_test, y_test, scorer, error_score, groups=grp_test))
+            train_scores.append(_score(estimator, X_train, y_test, scorer, error_score, groups=grp_train))
 
         score_time = time.time() - start_score
         score_times.append(score_time)

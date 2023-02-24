@@ -1,5 +1,8 @@
-to install to this scikit-learn just use pip
+to install to this scikit-learn just use pip but make sure you have a modern gcc available and have activated the appropriate
+conda environment. e.g.
 
+module load gcc
+conda activate haxby_env39
 pip install git+https://github.com/bogpetre/scikit-learn
 
 If you already have the systemwide package try 

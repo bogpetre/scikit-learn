@@ -172,7 +172,7 @@ def if_delegate_has_method(delegate):
     return lambda fn: _IffHasAttrDescriptor(fn, delegate, attribute_name=fn.__name__)
 
 
-def _safe_split(estimator, X, y, indices, train_indices=None):
+def _safe_split(estimator, X, y, indices, train_indices=None, groups=None):
     """Create subset of dataset and properly handle kernels.
 
     Slice X, y according to indices for cross-validation, but take care of
@@ -237,4 +237,10 @@ def _safe_split(estimator, X, y, indices, train_indices=None):
     else:
         y_subset = None
 
-    return X_subset, y_subset
+    if groups is not None:
+        group_subset = _safe_indexing(groups, indices)
+
+    if groups is None:
+        return X_subset, y_subset
+    else:
+        return X_subset, y_subset, group_subset
