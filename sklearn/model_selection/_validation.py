@@ -998,7 +998,7 @@ def cross_val_predict(
     parallel = Parallel(n_jobs=n_jobs, verbose=verbose, pre_dispatch=pre_dispatch)
     predictions = parallel(
         delayed(_fit_and_predict)(
-            clone(estimator), X, y, train, test, verbose, fit_params, method
+            clone(estimator), X, y, train, test, verbose, fit_params, method, groups=groups
         )
         for train, test in splits
     )
@@ -1028,7 +1028,7 @@ def cross_val_predict(
         return predictions[inv_test_indices]
 
 
-def _fit_and_predict(estimator, X, y, train, test, verbose, fit_params, method):
+def _fit_and_predict(estimator, X, y, train, test, verbose, fit_params, method, groups=groups):
     """Fit estimator and predict values for a given dataset split.
 
     Read more in the :ref:`User Guide <cross_validation>`.
