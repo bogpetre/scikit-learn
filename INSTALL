@@ -3,7 +3,8 @@ conda environment. e.g.
 
 module load gcc
 conda activate haxby_env39
-pip install git+https://github.com/bogpetre/scikit-learn
+git clone https://github.com/bogpetre/scikit-learn <path>
+pip install <path>
 
 If you already have the systemwide package try 
 conda remove --force scikit-learn
